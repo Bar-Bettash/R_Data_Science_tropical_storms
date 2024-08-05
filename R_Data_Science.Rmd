@@ -1,0 +1,211 @@
+# Tropical Storm Analysis Project
+
+In this project, we'll analyze a dataset of tropical storms using R. We'll explore various aspects of the storms, including their frequency, intensity, and geographical distribution.
+
+## Setup
+
+First, let's load the necessary libraries and our data:
+
+```{R}
+```
+```{R}
+library(tidyverse)
+library(readxl)
+
+storms_data <- read_xlsx("tropical_storms.xlsx")
+```
+
+## Data Exploration
+## Storm Count
+
+Let's start by counting the number of unique storms in our dataset:
+
+```{R}
+
+num_of_storms <- storms_data %>%
+  group_by(year, name) %>%
+  summarize(n = n()) %>%
+  nrow()
+
+print(paste("There are", num_of_storms, "storms in the dataset"))
+```
+
+This code groups the data by year and storm name, then counts the number of unique combinations. Each combination represents a distinct storm.
+
+## Category 5 Storm Frequency
+
+Next, we'll investigate how long it's been since the last Category 5 storm:
+
+```{R}
+last_year <- max(storms$year)
+last_cat5_year <- storms %>%
+  filter(category == 5) %>%
+  filter(year == max(year))
+
+print(paste("There have been", last_year-last_cat5_year$year[1], "years without category 5 storms"))
+```
+
+This code identifies the most recent year with a Category 5 storm and compares it to the latest year in the dataset.
+
+## Storm Indexing
+
+Let's add an index to our storms based on their name:
+
+```{R}
+storms_data <- storms_data %>%
+  mutate(index = ifelse(str_sub(name, 1, 2) == "AL", str_sub(name, 3, 4), ""),
+         index = as.numeric(index))
+```
+
+This creates a new 'index' column, extracting a numeric index from storm names that start with "AL".
+Data Visualization
+
+## Average Wind Speed by Category
+
+Let's create a line chart showing the average wind speed for each category over the years:
+
+```{R}
+storms_data %>%
+  group_by(year, category) %>%
+  summarize(wind = mean(wind)) %>%
+  ggplot(aes(x = year, y = wind, group = category, color = factor(category))) +
+  geom_line() +
+  ggtitle("Average wind speed per year and category")
+```
+
+This visualization helps us see trends in wind speeds across different storm categories over time.
+
+## Storm Characteristics by Year and Category
+
+Now, let's create a summary dataframe with key storm characteristics:
+
+```{R}
+first_last_data <- storms_data %>%
+  group_by(year, category) %>%
+  summarise(maxwind = max(wind),
+            pressure_diff = max(pressure) - min(pressure),
+            share_below_30 = mean(lat < 30)) %>%
+  print()
+```
+This dataframe shows the highest wind speed, pressure range, and proportion of observations below latitude 30 for each year and category.
+
+## Latitude Changes
+
+Let's identify which category had the largest increase in observations below latitude 30:
+
+```{R}
+first_year <- min(storms_data$year)
+last_year <- max(storms_data$year)
+highest_diff <- first_last_data %>%
+  filter(year %in% c(first_year, last_year)) %>%
+  select(year, category, share_below_30) %>%
+  spread(key = year, value = share_below_30) %>%
+  mutate(diff = get(as.character(last_year)) - get(as.character(first_year))) %>%
+  filter(diff == max(diff))
+print(paste("Category", highest_diff$category, "increased the most"))
+```
+This analysis helps us understand how storm patterns may be shifting geographically over time.
+
+## Storm Category Distribution
+
+Let's visualize the distribution of storms across categories:
+
+```{R}
+storms_data %>%
+  group_by(year, name) %>%
+  summarize(highest_category = max(category)) %>%
+  group_by(highest_category) %>%
+  summarize(count = n()) %>%
+  mutate(tot = sum(count),share = round(100*count/sum(count), 1)) %>%
+  ggplot(aes(x = factor(highest_category), y = share)) +
+  geom_col() +
+  geom_text(aes(label = paste(share,"%")), vjust = -0.5) +
+  ggtitle("Share of highest category reached")
+```
+
+This chart shows the percentage of storms that reach each category level.
+
+## Monthly Storm Patterns
+
+Now, let's examine storm patterns by month:
+
+```{R}
+per_month <- storms_data %>%
+  group_by(month) %>%
+  summarise(latitude = min(lat),
+            highest_category = max(category)) %>%
+  mutate(month = month(month, label = TRUE)) %>%
+  print()
+
+peak_season <- storms_data %>%
+  filter(month >= 7 & month <= 9) %>%
+  summarise(month = "peak season",
+            latitude = min(lat),
+            highest_category = max(category)) %>%
+  print()
+per_month <- bind_rows(per_month, peak_season)
+```
+
+This code summarizes storm data by month and identifies the peak storm season.
+
+## Visualizing Monthly Patterns
+
+Let's create a visualization of the minimum latitude reached by storms each month:
+
+```{R}
+per_month %>%
+  mutate(type = ifelse(month == "peak season", 
+                       "peak season",
+                       ifelse(highest_category == 5, "With category 5", "Standard"))) %>%
+  ggplot(aes(x = reorder(month, latitude ), 
+             y = latitude , 
+             fill = type)) +
+  geom_col() +
+  ggtitle("Minimum latitude per month")
+```
+
+This chart helps us understand seasonal patterns in storm locations.
+## Wind vs. Pressure Relationship
+
+Let's examine the relationship between wind speed and pressure for each storm category:
+
+```{R}
+for (Category in unique(storms_data$category)) {
+  cat_data <- storms_data %>%
+    filter(category == Category)
+  
+  g <- ggplot(cat_data, mapping = aes(x = pressure, y = wind, color = lat < 20)) +
+    geom_point() +
+    ggtitle("Wind vs. Pressure",
+            subtitle = paste("Category", Category))
+  print(g)
+}
+```
+These scatter plots help us visualize how wind speed and pressure relate across different storm categories.
+
+## Impact Analysis
+
+Finally, let's conduct a hypothetical impact analysis:
+
+```{R}
+storms_with_radius <- filter(storms_data, hu_radius > 0)
+
+wind_july <- storms_with_radius %>%
+  filter(month == 7) %>%
+  summarize(wind = mean(wind)) %>%
+  print()
+
+november_data <- storms_with_radius %>%
+  filter(month == 11) %>%
+  mutate(damage = wind * hu_radius * hu_radius) %>%
+  print()
+
+november_data <- november_data %>%
+  mutate(cf_wind = wind_july$wind) %>%
+  mutate(cf_damange = cf_wind * hu_radius * hu_radius) %>%
+  print()
+
+print(paste("Total damage for August will be higher by", sum(november_data$cf_damange-november_data$damage)))
+```
+This analysis compares the potential damage of November storms if they had July's average wind speeds, giving us insight into the impact of seasonal wind speed variations on storm damage.
+
